@@ -4,9 +4,25 @@
 #include "ofxOsc.h"
 #include "ofxKinect.h"
 #include "ofxOpenCv.h"
+#include "ofxGui.h"
+
 
 #define HOST "localhost"
-#define PORT 6003
+#define PORT 5001
+
+
+class dancers{
+    
+    ofVec2f p;
+    ofVec2f pOld;
+    ofVec2f vel;
+    ofVec2f velAbs;
+    ofVec2f blobSizes;
+    ofVec2f velNorm;
+   // float velAbs;
+    bool triggerN;
+    
+};
 
 class ofApp : public ofBaseApp{
     
@@ -53,11 +69,7 @@ public:
     int nearThreshold;
     int farThreshold;
     int angle;
-    ofVec2f p;
-    ofVec2f p2;
     
-    
-    int minArea = 400;
     
     bool drawContour = true;
     //----------
@@ -68,10 +80,11 @@ public:
     vector <ofVec2f> vel;
     vector <ofVec2f> velNorm;
     vector <float> velAbs;
+    vector <bool> triggerN;
     ofVec2f velAvg;
     ofVec2f velAvgNorm;
     ofVec2f velAvgOld;
-    bool    velTrigger = false;
+    bool    massTrigger = false;
     float time0 = 0;
     
     ofVec2f massCenter;
@@ -84,4 +97,22 @@ public:
     vector <float> distN;
     vector <float> blobSizes;
     vector <float> blobLen;
+    
+    
+    
+    // tweakable:
+    
+    
+    // GUI
+    bool bHideGui;
+    ofxPanel gui;
+    ofxFloatSlider nearKinectThresh;
+    ofxFloatSlider farKinectThresh;
+    ofxFloatSlider triggerThresh;
+    ofxFloatSlider posSmooth; // 0..1;
+    ofxIntSlider minArea;
+    ofxToggle blur;
+    ofxToggle mirror;
+    
+    
 };

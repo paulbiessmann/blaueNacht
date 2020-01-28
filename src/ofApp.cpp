@@ -32,19 +32,22 @@ void ofApp::setup(){
     grayThreshNear.allocate(kinect.width, kinect.height);
     grayThreshFar.allocate(kinect.width, kinect.height);
     
-    nearThreshold = 255;
-    farThreshold = 212;
+    nearKinectThresh = nearThreshold = 255;
+    farKinectThresh = farThreshold = 212;
     
 //    angle = -20;
 //    kinect.setCameraTiltAngle(angle);
     
+//    int     minArea = 400;
+//    float   posSmooth = 0.5; // 0..1
+//    float   triggerThresh = 20;
+    
     setupGui();
     
     
+    dancers d[maxBlobs];
+    
     points.resize(maxBlobs);
-    for(int i=0; i<maxBlobs; i++){
-        points[i].set(0,0);
-    }
     pointsOld.resize(maxBlobs);
     vel.resize(maxBlobs);
     velNorm.resize(maxBlobs);
@@ -52,22 +55,31 @@ void ofApp::setup(){
     distN.resize(maxBlobs * maxBlobs);
     blobSizes.resize(maxBlobs);
     blobLen.resize(maxBlobs);
+    triggerN.resize(maxBlobs);
+    for(int i=0; i<maxBlobs; i++){
+        massCenter.set(0,0);
+        points[i].set(0,0);
+        triggerN[i] = false;
+    }
+
     massCenter.set(0,0);
 }
 
 //-------------------------------------------------------------
 void ofApp::setupGui(){
     
-    //    string guiPath = "audio.xml";
-    //    gui.setup("audio", guiPath, 20,20);
-    //    gui.add(guiNoise.setup("Noise", 1.0, 0.0, 10.0));
-    //    gui.add(danceSize.setup("Size", 1.0, 0.0, 4.0));
-    //    gui.add(numPersons.setup("num", 5.0, 1.0, 300.0));
+    string guiPath = "blaueNacht.xml";
+    gui.setup("blaueNacht", guiPath, 20,20);
+    gui.add(nearKinectThresh.setup("Kinect Near Thr", 255, 0.0, 255.0));
+    gui.add(farKinectThresh.setup("Kinect Far Thr", 212, 0.0, 255.0));
+    gui.add(triggerThresh.setup("Trigger Threshold", 10, 0.0, 20.0));
+    gui.add(posSmooth.setup("Position Smoothening", 0.5, 0.01, 0.99));
+    gui.add(minArea.setup("Minimal Blob Area", 500, 100, 4000));
+    gui.add(blur.setup("Blur Image", false));
+    gui.add(mirror.setup("Mirror Image", true));
+
     //    gui.add(chaos.setup("Swarm", 0.0, 0.0, 2.0));
-    //
-    //    //    gui.add(audioThreshold.setup("audioThreshold", 1.0, 0.0, 1.0));
-    //    //    gui.add(audioPeakDecay.setup("audioPeakDecay", 0.95, 0.0, 1.0));
-    //    //    gui.add(audioMaxDecay.setup("audioMaxDecay", 0.995, 0.0, 1.0));
+
     //    gui.loadFromFile(guiPath);
 }
 
@@ -81,14 +93,18 @@ void ofApp::update(){
         grayImage.setFromPixels(kinect.getDepthPixels());
         
         // Mirror and Blur the Image:
-        grayImage.mirror(false, true);
-        //grayImage.blurHeavily();
+        if(mirror){
+            grayImage.mirror(false, true);
+        }
+        if(blur){
+            grayImage.blurHeavily();
+        }
         
         // we do threshold
         grayThreshNear = grayImage;
         grayThreshFar = grayImage;
-        grayThreshNear.threshold(nearThreshold, true);
-        grayThreshFar.threshold(farThreshold);
+        grayThreshNear.threshold(nearKinectThresh, true);
+        grayThreshFar.threshold(farKinectThresh);
         cvAnd(grayThreshNear.getCvImage(), grayThreshFar.getCvImage(), grayImage.getCvImage(), NULL);
         
         
@@ -110,16 +126,16 @@ void ofApp::update(){
         velAvgNorm.set(0,0);
         massCenter.set(0,0);
         
-        for (int i = 0;  i < maxBlobs; i++){
+        for (int i = 0;  i < numBlobs; i++){
             ofxCvBlob & blob = contourFinder.blobs[i];
             float velAbsOld = 0;
             ofVec2f c( blob.centroid.x, blob.centroid.y );
             
             pointsOld[i] = points[i];
-            points[i]   = pointsOld[i] * 0.5 + c * 0.5; // LP Filtering
+            points[i]   = pointsOld[i] * posSmooth + c * (1-posSmooth); // LP Filtering
         
             // don't calc speed if the values jump
-            if(pointsOld[i].x > 0 && pointsOld[i].y > 0 && pointsOld[i].x - points[i].x < 200){
+            if(pointsOld[i].x > 1 && pointsOld[i].y > 1 && pointsOld[i].x - points[i].x < 100){
                 vel[i] = (pointsOld[i] - points[i]);// / dt;
                 
             }
@@ -129,6 +145,13 @@ void ofApp::update(){
             velNorm[i].normalize();
             velAvg += vel[i];
             velAvgNorm += velNorm[i];
+            
+            if(velAbs[i] - velAbsOld > triggerThresh){
+                triggerN[i] = true;
+            }else{
+                triggerN[i] = false;
+            }
+                
             
             blobSizes[i] = blob.area;
             
@@ -140,18 +163,18 @@ void ofApp::update(){
             velAvgNorm /= numBlobs;
             massCenter /= numBlobs;
         }
-        for (int i=numBlobs; i<maxBlobs; i++){
-            points[i].set(0,0);
-        }
+//        for (int i=numBlobs; i<maxBlobs; i++){
+//            points[i].set(0,0);
+//        }
         
         
         // Trigger Signal aus Average Velocity (Betrag):
         float velAvgAbs = vecAbs(velAvg);
         float velAvgAbsOld = vecAbs(velAvgOld);
-        if (velAvgAbs - velAvgAbsOld > 20){
-            velTrigger = true;
+        if (velAvgAbs - velAvgAbsOld > triggerThresh){
+            massTrigger = true;
         }else{
-            velTrigger = false;
+            massTrigger = false;
         }
             
         
@@ -167,7 +190,7 @@ void ofApp::update(){
                 else{
                     distN[count] = 0;
                 }
-                if(distN[count] > 0.1){
+                if(distN[count] > 10){
                     distAvg += distN[count];
                     countBlobs++;
                 }
@@ -211,7 +234,7 @@ void ofApp::update(){
          */
         
         
-        if(ofGetFrameNum() % 1 == 0){
+        if(ofGetFrameNum() % 2 == 0){
             
             
             
@@ -219,8 +242,8 @@ void ofApp::update(){
             m.setAddress("/mass");
             m.addFloatArg(velAvgAbs);
             m.addFloatArg(distAvg);
-            if(velTrigger){
-                m.addTriggerArg();  
+            if(massTrigger){
+                m.addTriggerArg();
             }
             
             sender.sendMessage(m, false);
@@ -228,10 +251,16 @@ void ofApp::update(){
             m.setAddress("/blob");
             for (int i = 0; i < maxBlobs; i++){
                 
-                m.addFloatArg(ofMap( points[i].x, 0, kinect.width, 0, 1 ));
-                m.addFloatArg(ofMap( points[i].y, 0, kinect.height, 0, 1 ));
+                m.addFloatArg(ofMap( points[i].x, 0, kinect.width, 0.0, 1.0 ));
+                m.addFloatArg(ofMap( points[i].y, 0, kinect.height, 0.0, 1.0 ));
                 m.addFloatArg(velAbs[i]);
                 m.addFloatArg(blobSizes[i]);
+                if(triggerN[i]){
+                    m.addTriggerArg();
+                }
+                else{
+                    m.addIntArg(0);
+                }
                 
             }
             sender.sendMessage(m, false);
@@ -268,8 +297,6 @@ void ofApp::draw(){
     
     ofFill();
     ofSetColor(255,255,255);
-    float bX = ofMap( p.x, 0, kinect.width, 0, ofGetWidth() );
-    float bY = ofMap( p.y, 0, kinect.height, 0, ofGetHeight() );
     
     string swarmMsg = "speedAbs ";
     ofDrawBitmapString(swarmMsg, 300, 20);
@@ -302,12 +329,18 @@ void ofApp::draw(){
         float vAbs_tmp = ofClamp(velAbs[i] , 1, 60);
         
         ofSetColor(255,255,0);
+        if(triggerN[i]){
+            ofSetColor(255,0,0);
+        }
         ofDrawCircle(pTx, pTy, vAbs_tmp +5);
     }
     
     // Draw Massen Center
     ofSetColor(0, 100, 100);
-    ofDrawCircle(massCenter.x, massCenter.y, vecAbs(velAvg) + 5);
+    int mCx = ofMap(massCenter.x, 0, kinect.width, 0, ofGetWidth() );
+    int mCy = ofMap(massCenter.y, 0, kinect.height, 0, ofGetHeight() );
+
+    ofDrawCircle(mCx, mCy, vecAbs(velAvg) + 5);
 
 
     ofSetColor(0,0,255);
@@ -355,19 +388,27 @@ void ofApp::draw(){
     ofPopMatrix();
     
     
-    ofDrawBitmapString("far " + ofToString(farThreshold), 20, 400);
-    ofDrawBitmapString("near " + ofToString(nearThreshold), 20, 430);
+//    ofDrawBitmapString("far " + ofToString(farKinectThresh), 20, 400);
+//    ofDrawBitmapString("near " + ofToString(nearKinectThresh), 20, 430);
+    
+    if(!bHideGui){
+        gui.draw();
+    }
     
     // Draw Kinect Thresholds:
     ofNoFill();
+    ofScale(0.5,0.5);
     ofTranslate(300, 255);
-    ofRotateZ(180);
+    ofRotateZDeg(180);
     ofSetColor(150);
     ofDrawRectangle(0, 0, 300, 255);
     ofSetColor(255,0,0);
-    ofDrawLine(0, farThreshold, 300, farThreshold);
+    ofDrawLine(0, farKinectThresh, 300, farKinectThresh);
     ofSetColor(0,255,0);
-    ofDrawLine(0, nearThreshold, 300, nearThreshold);
+    ofDrawLine(0, nearKinectThresh, 300, nearKinectThresh);
+    
+    
+
     
 }
 
@@ -398,25 +439,25 @@ void ofApp::keyPressed(int key){
             break;
         case '>':
         case '.':
-            farThreshold ++;
+            farThreshold++;
             if (farThreshold > 255) farThreshold = 255;
             break;
             
         case '<':
         case ',':
-            farThreshold --;
+            farThreshold--;
             if (farThreshold < 0) farThreshold = 0;
             break;
             
         case '+':
         case '=':
-            nearThreshold ++;
-            if (nearThreshold > 255) nearThreshold = 255;
+            nearThreshold++;
+            if (nearKinectThresh > 255) nearKinectThresh = 255;
             break;
             
         case '-':
-            nearThreshold --;
-            if (nearThreshold < 0) nearThreshold = 0;
+            nearThreshold--;
+            if (nearKinectThresh < 0) nearKinectThresh = 0;
             break;
             
         case OF_KEY_UP:
@@ -429,6 +470,10 @@ void ofApp::keyPressed(int key){
             angle--;
             if(angle<-30) angle=-30;
             kinect.setCameraTiltAngle(angle);
+            break;
+            
+        case 'g':
+            bHideGui = !bHideGui;
             break;
     }
     
