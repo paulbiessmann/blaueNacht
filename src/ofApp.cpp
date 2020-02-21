@@ -247,23 +247,26 @@ void ofApp::update(){
             }
             
             sender.sendMessage(m, false);
+            m.clear();
             
             m.setAddress("/blob");
-            for (int i = 0; i < maxBlobs; i++){
+            for (int i = 0; i < maxBlobs; i++){ // < maxBlobs
                 
                 m.addFloatArg(ofMap( points[i].x, 0, kinect.width, 0.0, 1.0 ));
                 m.addFloatArg(ofMap( points[i].y, 0, kinect.height, 0.0, 1.0 ));
                 m.addFloatArg(velAbs[i]);
                 m.addFloatArg(blobSizes[i]);
                 if(triggerN[i]){
-                    m.addTriggerArg();
+                    m.addIntArg(1);
                 }
                 else{
                     m.addIntArg(0);
                 }
                 
             }
-            sender.sendMessage(m, false);
+            if(1){
+                sender.sendMessage(m, false);
+            }
             m.clear();
             
 
