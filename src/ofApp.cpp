@@ -63,6 +63,12 @@ void ofApp::setup(){
     }
 
     massCenter.set(0,0);
+    center.set(ofGetWidth()/2, ofGetHeight()/2);
+    chaos   = 0;
+    velDiff = 0;
+    distCenterSum = 0;
+    blobSizeDiffSum = 0;
+    velChaos = 0;
 }
 
 //-------------------------------------------------------------
@@ -118,6 +124,8 @@ void ofApp::update(){
         
         int numBlobs = contourFinder.blobs.size();
         
+        blobSizes.resize(numBlobs);
+        
         float time  = ofGetElapsedTimef();
         float dt    = time - time0;
         time0   = time;
@@ -125,10 +133,12 @@ void ofApp::update(){
         velAvg.set(0,0);
         velAvgNorm.set(0,0);
         massCenter.set(0,0);
+        velChaos = 0;
         
         for (int i = 0;  i < numBlobs; i++){
             ofxCvBlob & blob = contourFinder.blobs[i];
             float velAbsOld = 0;
+            ofVec2f velOld;
             ofVec2f c( blob.centroid.x, blob.centroid.y );
             
             pointsOld[i] = points[i];
@@ -136,26 +146,31 @@ void ofApp::update(){
         
             // don't calc speed if the values jump
             if(pointsOld[i].x > 1 && pointsOld[i].y > 1 && pointsOld[i].x - points[i].x < 100){
+                velOld = vel[i];
                 vel[i] = (pointsOld[i] - points[i]);// / dt;
                 
             }
-            velAbsOld = velAbs[i];
-            velAbs[i] = vecAbs(vel[i]) + velAbsOld * 0.9;
-            velNorm[i] = vel[i];
+            velAbsOld   = velAbs[i];
+            velAbs[i]   = vecAbs(vel[i]) + velAbsOld * 0.9;
+            velNorm[i]  = vel[i];
             velNorm[i].normalize();
-            velAvg += vel[i];
-            velAvgNorm += velNorm[i];
+            velAvg      += vel[i];  // Geschwindigkeit mit Richtung?
+            velAbsAvg   += velAbs[i];
+            
+            velAvgNorm  += velNorm[i];
+            
+            // Directions - Dot Product:
+            velChaos -= vel[i].dot(velOld);
+            
             
             if(velAbs[i] - velAbsOld > triggerThresh){
                 triggerN[i] = true;
             }else{
                 triggerN[i] = false;
             }
-                
             
             blobSizes[i] = blob.area;
-            
-            massCenter += points[i];
+            massCenter  += points[i];
             
         }
         if(numBlobs>1){
@@ -163,9 +178,38 @@ void ofApp::update(){
             velAvgNorm /= numBlobs;
             massCenter /= numBlobs;
         }
-//        for (int i=numBlobs; i<maxBlobs; i++){
-//            points[i].set(0,0);
-//        }
+
+        
+        
+        float avgBlobSize = 0.0f;
+        if ( numBlobs != 0) {
+            avgBlobSize = accumulate( blobSizes.begin(), blobSizes.end(), 0.0) / numBlobs;
+        }
+        
+        
+        // Chaos calculation
+        chaos = 0;
+        for (int i=0; i<numBlobs; i++){
+            float blobSizeDiff = avgBlobSize - blobSizes[i];
+            // get Abs blobSizeDiff -> vergleichen
+        
+            blobSizeDiffSum += abs(blobSizeDiff);
+            chaos += ofMap(blobSizeDiffSum, 0, 10000, 0, 1);
+            
+            // für jeden Blob berechnen und dann?
+            float distCenter = ofDist(points[i].x, points[i].y, center.x, center.y);
+            distCenterSum   += distCenter;
+            chaos += ofMap(distCenterSum, 0, center.x/2, 0, 1);
+            
+            // wenn massCenter in der Mitte, aber alle anderen distCenter groß sind, dann wenig chaos oder?
+            float distMassCenter = ofDist(massCenter.x, massCenter.y, center.x, center.y);
+            chaos -= ofMap(center.x - distMassCenter,0, center.x/2, 0, 1);
+            
+            // Unterschiede Velocity
+            velDiff += abs( velAbs[i] - velAbsAvg );
+            chaos   += velDiff;
+            
+        }
         
         
         // Trigger Signal aus Average Velocity (Betrag):
@@ -273,6 +317,10 @@ void ofApp::update(){
         }
 
         
+        /**** Log Outpus ****/
+        if(1){
+            ofLogNotice() << "Chaos: " << chaos << "  blobDiff: " << blobSizeDiffSum << "  distCSum: " << distCenterSum << "  velDiff: " << velDiff << "  velChaos: " << velChaos;
+        }
         if(0){ //log
             //ofLogNotice() << "numBlobs: " << numBlobs;
             ofLogNotice() << "bx: " << bX << "speed: " << velAbs[0];

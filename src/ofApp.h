@@ -5,7 +5,7 @@
 #include "ofxKinect.h"
 #include "ofxOpenCv.h"
 #include "ofxGui.h"
-
+#include <stdlib.h>
 
 #define HOST "localhost"
 #define PORT 8004
@@ -13,14 +13,14 @@
 
 class dancers{
     
-    ofVec2f p;
-    ofVec2f pOld;
-    ofVec2f vel;
-    ofVec2f velAbs;
-    ofVec2f blobSizes;
-    ofVec2f velNorm;
-   // float velAbs;
-    bool triggerN;
+//    ofVec2f p;
+//    ofVec2f pOld;
+//    ofVec2f vel;
+//    ofVec2f velAbs;
+//    ofVec2f blobSizes;
+//    ofVec2f velNorm;
+//   // float velAbs;
+//    bool triggerN;
     
 };
 
@@ -82,14 +82,22 @@ public:
     vector <float> velAbs;
     vector <bool> triggerN;
     ofVec2f velAvg;
+    float   velAbsAvg;
     ofVec2f velAvgNorm;
     ofVec2f velAvgOld;
     bool    massTrigger = false;
-    float time0 = 0;
+    float   time0 = 0;
+    
+    
     
     ofVec2f massCenter;
+    ofVec2f center;
     
-    
+    float   chaos;
+    float   velChaos;
+    float   velDiff;
+    float   distCenterSum;
+    float   blobSizeDiffSum;
     
     
     float dist, distNorm;
