@@ -78,12 +78,10 @@ public:
     vector <ofVec2f> points;
     vector <ofVec2f> pointsOld;
     vector <ofVec2f> vel;
-    vector <ofVec2f> velNorm;
     vector <float> velAbs;
     vector <bool> triggerN;
     ofVec2f velAvg;
     float   velAbsAvg;
-    ofVec2f velAvgNorm;
     ofVec2f velAvgOld;
     bool    massTrigger = false;
     float   time0 = 0;

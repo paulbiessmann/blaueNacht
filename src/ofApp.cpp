@@ -50,7 +50,6 @@ void ofApp::setup(){
     points.resize(maxBlobs);
     pointsOld.resize(maxBlobs);
     vel.resize(maxBlobs);
-    velNorm.resize(maxBlobs);
     velAbs.resize(maxBlobs);
     distN.resize(maxBlobs * maxBlobs);
     blobSizes.resize(maxBlobs);
@@ -63,7 +62,7 @@ void ofApp::setup(){
     }
 
     massCenter.set(0,0);
-    center.set(ofGetWidth()/2, ofGetHeight()/2);
+    center.set(kinect.width/2, kinect.height/2);
     chaos   = 0;
     velDiff = 0;
     distCenterSum = 0;
@@ -77,7 +76,7 @@ void ofApp::setupGui(){
     string guiPath = "blaueNacht.xml";
     gui.setup("blaueNacht", guiPath, 20,20);
     gui.add(nearKinectThresh.setup("Kinect Near Thr", 255, 0.0, 255.0));
-    gui.add(farKinectThresh.setup("Kinect Far Thr", 212, 0.0, 255.0));
+    gui.add(farKinectThresh.setup("Kinect Far Thr", 230, 0.0, 255.0));
     gui.add(triggerThresh.setup("Trigger Threshold", 10, 0.0, 20.0));
     gui.add(posSmooth.setup("Position Smoothening", 0.5, 0.01, 0.99));
     gui.add(minArea.setup("Minimal Blob Area", 500, 100, 4000));
@@ -131,7 +130,7 @@ void ofApp::update(){
         time0   = time;
         velAvgOld = velAvg;
         velAvg.set(0,0);
-        velAvgNorm.set(0,0);
+        velAbsAvg = 0;
         massCenter.set(0,0);
         velChaos = 0;
         
@@ -139,29 +138,30 @@ void ofApp::update(){
             ofxCvBlob & blob = contourFinder.blobs[i];
             float velAbsOld = 0;
             ofVec2f velOld;
+            velOld.set(0,0);
             ofVec2f c( blob.centroid.x, blob.centroid.y );
             
             pointsOld[i] = points[i];
             points[i]   = pointsOld[i] * posSmooth + c * (1-posSmooth); // LP Filtering
         
             // don't calc speed if the values jump
-            if(pointsOld[i].x > 1 && pointsOld[i].y > 1 && pointsOld[i].x - points[i].x < 100){
+            if(pointsOld[i].x > 1 && pointsOld[i].y > 1 ){ // && pointsOld[i].x - points[i].x < 100
                 velOld = vel[i];
-                vel[i] = (pointsOld[i] - points[i]);// / dt;
+                vel[i] = (pointsOld[i] - points[i]) ;// / dt;
+                
+                vel[i].x = roundf(vel[i].x * 100) / 100;
+                vel[i].y = roundf(vel[i].y * 100) / 100;
                 
             }
             velAbsOld   = velAbs[i];
             velAbs[i]   = vecAbs(vel[i]) + velAbsOld * 0.9;
-            velNorm[i]  = vel[i];
-            velNorm[i].normalize();
             velAvg      += vel[i];  // Geschwindigkeit mit Richtung?
             velAbsAvg   += velAbs[i];
             
-            velAvgNorm  += velNorm[i];
-            
             // Directions - Dot Product:
-            velChaos -= vel[i].dot(velOld);
-            
+            if(i>0){
+                velChaos += vel[i].dot(vel[i-1]);  // +=
+            }
             
             if(velAbs[i] - velAbsOld > triggerThresh){
                 triggerN[i] = true;
@@ -175,7 +175,6 @@ void ofApp::update(){
         }
         if(numBlobs>1){
             velAvg /= numBlobs;
-            velAvgNorm /= numBlobs;
             massCenter /= numBlobs;
         }
 
@@ -189,12 +188,15 @@ void ofApp::update(){
         
         // Chaos calculation
         chaos = 0;
+        blobSizeDiffSum = 0;
+        distCenterSum = 0;
+        velDiff = 0;
         for (int i=0; i<numBlobs; i++){
             float blobSizeDiff = avgBlobSize - blobSizes[i];
             // get Abs blobSizeDiff -> vergleichen
         
             blobSizeDiffSum += abs(blobSizeDiff);
-            chaos += ofMap(blobSizeDiffSum, 0, 10000, 0, 1);
+            chaos += ofMap(blobSizeDiffSum, 5000, 20000, 0, 1);
             
             // für jeden Blob berechnen und dann?
             float distCenter = ofDist(points[i].x, points[i].y, center.x, center.y);
@@ -206,8 +208,8 @@ void ofApp::update(){
             chaos -= ofMap(center.x - distMassCenter,0, center.x/2, 0, 1);
             
             // Unterschiede Velocity
-            velDiff += abs( velAbs[i] - velAbsAvg );
-            chaos   += velDiff;
+//            velDiff += abs( velAbsAvg - velAbs[i] );
+        //    chaos   += velDiff;
             
         }
         
@@ -230,11 +232,14 @@ void ofApp::update(){
             for(int j=i+1; j<maxBlobs; ++j){
                 if(j<numBlobs && (points[i].x > 0 && points[i].y > 0 &&  points[j].x > 0 && points[j].y > 0)){
                     distN[count] = ofDist(points[i].x, points[i].y, points[j].x, points[j].y);
+                    
                 }
                 else{
                     distN[count] = 0;
                 }
                 if(distN[count] > 10){
+                    velDiff += abs( velAbs[j] - velAbs[i] );
+
                     distAvg += distN[count];
                     countBlobs++;
                 }
@@ -242,8 +247,8 @@ void ofApp::update(){
             }
         }
         if (numBlobs > 1){
-                dist = ofDist(points[0].x, points[0].y, points[1].x, points[1].y);
-                distNorm = ofMap( dist, 0, kinect.width, 0, 1 );
+            dist = ofDist(points[0].x, points[0].y, points[1].x, points[1].y);
+            distNorm = ofMap( dist, 0, kinect.width, 0, 1 );
         }
         else{
             distNorm = 0;
@@ -251,6 +256,7 @@ void ofApp::update(){
         
         if(countBlobs > 1){
             distAvg /= countBlobs;
+            velDiff /= countBlobs;
         }
         
         
@@ -318,8 +324,8 @@ void ofApp::update(){
 
         
         /**** Log Outpus ****/
-        if(1){
-            ofLogNotice() << "Chaos: " << chaos << "  blobDiff: " << blobSizeDiffSum << "  distCSum: " << distCenterSum << "  velDiff: " << velDiff << "  velChaos: " << velChaos;
+        if(ofGetFrameNum() % 5 == 0){
+            ofLogNotice() << "Chaos: " << chaos << "  blobDiff: " << (int)blobSizeDiffSum << "  distCSum: " << (int)distCenterSum << "  velDiff: " << velDiff << "  velChaos: " << velChaos << "  vel_1: " << vel[0];
         }
         if(0){ //log
             //ofLogNotice() << "numBlobs: " << numBlobs;
@@ -384,7 +390,18 @@ void ofApp::draw(){
             ofSetColor(255,0,0);
         }
         ofDrawCircle(pTx, pTy, vAbs_tmp +5);
+        
+        ofSetColor(100, 255, 100);
+        ofDrawLine(pTx, pTy, pTx + vel[i].x * 10, pTy + vel[i].y * 10);
+        float dotVel;
+//        if(i>0){
+//            dotVel = vel[i].dot(vel[i-1]);
+//            ofSetColor(255, 255, 255);
+//            ofDrawLine(pTx, pTy, pTx + dotVel, pTy );
+//            ofDrawBitmapString(ofToString(dotVel), pTx + 50, pTy +50);
+//        }
     }
+        
     
     // Draw Massen Center
     ofSetColor(0, 100, 100);
