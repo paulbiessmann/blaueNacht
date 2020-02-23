@@ -56,7 +56,6 @@ void ofApp::setup(){
     blobLen.resize(maxBlobs);
     triggerN.resize(maxBlobs);
     for(int i=0; i<maxBlobs; i++){
-        massCenter.set(0,0);
         points[i].set(0,0);
         triggerN[i] = false;
     }
@@ -64,10 +63,11 @@ void ofApp::setup(){
     massCenter.set(0,0);
     center.set(kinect.width/2, kinect.height/2);
     chaos   = 0;
+    chaosOld = 0;
     velDiff = 0;
     distCenterSum = 0;
     blobSizeDiffSum = 0;
-    velChaos = 0;
+    velAlignment = 0;
 }
 
 //-------------------------------------------------------------
@@ -79,7 +79,7 @@ void ofApp::setupGui(){
     gui.add(farKinectThresh.setup("Kinect Far Thr", 230, 0.0, 255.0));
     gui.add(triggerThresh.setup("Trigger Threshold", 10, 0.0, 20.0));
     gui.add(posSmooth.setup("Position Smoothening", 0.5, 0.01, 0.99));
-    gui.add(minArea.setup("Minimal Blob Area", 500, 100, 4000));
+    gui.add(minArea.setup("Minimal Blob Area", 5000, 300, 8000));
     gui.add(blur.setup("Blur Image", false));
     gui.add(mirror.setup("Mirror Image", true));
 
@@ -132,7 +132,7 @@ void ofApp::update(){
         velAvg.set(0,0);
         velAbsAvg = 0;
         massCenter.set(0,0);
-        velChaos = 0;
+        velAlignment = 0;
         
         for (int i = 0;  i < numBlobs; i++){
             ofxCvBlob & blob = contourFinder.blobs[i];
@@ -158,9 +158,12 @@ void ofApp::update(){
             velAvg      += vel[i];  // Geschwindigkeit mit Richtung?
             velAbsAvg   += velAbs[i];
             
-            // Directions - Dot Product:
-            if(i>0){
-                velChaos += vel[i].dot(vel[i-1]);  // +=
+            /*** velocity Alignment:  Directions - Dot Product:  ***/
+            if(i>0 && velAbs[i] > 5 ){
+                ofVec2f velNorm = vel[i].normalize();
+                ofVec2f velNormOld = vel[i-1].normalize();
+//                velAlignment += vel[i].dot(vel[i-1]);
+                velAlignment += velNorm.dot(velNormOld);
             }
             
             if(velAbs[i] - velAbsOld > triggerThresh){
@@ -186,32 +189,7 @@ void ofApp::update(){
         }
         
         
-        // Chaos calculation
-        chaos = 0;
-        blobSizeDiffSum = 0;
-        distCenterSum = 0;
-        velDiff = 0;
-        for (int i=0; i<numBlobs; i++){
-            float blobSizeDiff = avgBlobSize - blobSizes[i];
-            // get Abs blobSizeDiff -> vergleichen
-        
-            blobSizeDiffSum += abs(blobSizeDiff);
-            chaos += ofMap(blobSizeDiffSum, 5000, 20000, 0, 1);
-            
-            // für jeden Blob berechnen und dann?
-            float distCenter = ofDist(points[i].x, points[i].y, center.x, center.y);
-            distCenterSum   += distCenter;
-            chaos += ofMap(distCenterSum, 0, center.x/2, 0, 1);
-            
-            // wenn massCenter in der Mitte, aber alle anderen distCenter groß sind, dann wenig chaos oder?
-            float distMassCenter = ofDist(massCenter.x, massCenter.y, center.x, center.y);
-            chaos -= ofMap(center.x - distMassCenter,0, center.x/2, 0, 1);
-            
-            // Unterschiede Velocity
-//            velDiff += abs( velAbsAvg - velAbs[i] );
-        //    chaos   += velDiff;
-            
-        }
+
         
         
         // Trigger Signal aus Average Velocity (Betrag):
@@ -228,6 +206,7 @@ void ofApp::update(){
         int count = 0;
         int countBlobs = 0;
         distAvg = 0;
+        velDiff = 0;
         for(int i=0; i<maxBlobs; ++i){
             for(int j=i+1; j<maxBlobs; ++j){
                 if(j<numBlobs && (points[i].x > 0 && points[i].y > 0 &&  points[j].x > 0 && points[j].y > 0)){
@@ -238,6 +217,7 @@ void ofApp::update(){
                     distN[count] = 0;
                 }
                 if(distN[count] > 10){
+                    // Unterschiede Velocity
                     velDiff += abs( velAbs[j] - velAbs[i] );
 
                     distAvg += distN[count];
@@ -258,15 +238,53 @@ void ofApp::update(){
             distAvg /= countBlobs;
             velDiff /= countBlobs;
         }
+
         
+    //*** Chaos calculation ***/
+        chaosOld = chaos;
+        chaos = 0;
+        blobSizeDiffSum = 0;
+        distCenterSum = 0;
+        for (int i=0; i<numBlobs; i++){
+            float blobSizeDiff = avgBlobSize - blobSizes[i];
+            // get Abs blobSizeDiff -> vergleichen
+            
+            blobSizeDiffSum += abs(blobSizeDiff);
+//            chaos += ofMap(blobSizeDiffSum, 5000, 20000, 0, 1);
+            
+            // für jeden Blob berechnen und dann?
+            float distCenter = ofDist(points[i].x, points[i].y, center.x, center.y);
+            distCenterSum   += distCenter;
+
+            
+        }
         
-        float bX = ofMap( points[0].x, 0, kinect.width, 0, 127 );
-        float bY = ofMap( points[0].y, 0, kinect.height, 0, 127 );
-        float b2X = ofMap( points[1].x, 0, kinect.width, 0, 127 );
-        float b2Y = ofMap( points[1].y, 0, kinect.height, 0, 127 );
+        // wenn massCenter in der Mitte, aber alle anderen distCenter groß sind, dann wenig chaos oder?
+        float distMassCenter = ofDist(massCenter.x, massCenter.y, center.x, center.y);
         
+        // How wide are the Blobs spread over the plane, and how centered is the mass?
+        float blobSpreading = (distCenterSum / numBlobs) - distMassCenter;
+//        chaos += ofMap(blobSpreading, 0, center.x/2, 0, 1);
         
-        // *** Send OSC Data ***
+        // Unterschiede Velocity ( Bei Dist Berechnung )
+        chaos += ofMap(velDiff, 0, 50, 0, 1);
+
+        chaos += ofMap(velAvgAbs, 0, 20, 0, 1);
+        
+        // Je mehr aligned, desto weniger Chaos:
+        float velAlgnAbs = ofMap(abs(velAlignment), 0, 1, 1, 0);
+        if(velAlignment != 0){
+            chaos += velAlgnAbs;
+        }
+        
+        // Smooth chaos value:
+        chaos = chaos + chaosOld * 0.93;
+        
+    /* --end Chaos. */
+        
+
+        
+    // *** Send OSC Data ***/
 
         /*    data:
                 points[i]
@@ -300,7 +318,9 @@ void ofApp::update(){
             m.clear();
             
             m.setAddress("/blob");
-            for (int i = 0; i < maxBlobs; i++){ // < maxBlobs
+            float sendNr = maxBlobs;
+            if (numBlobs < maxBlobs) sendNr = numBlobs;
+            for (int i = 0; i < sendNr; i++){ // < maxBlobs
                 
                 m.addFloatArg(ofMap( points[i].x, 0, kinect.width, 0.0, 1.0 ));
                 m.addFloatArg(ofMap( points[i].y, 0, kinect.height, 0.0, 1.0 ));
@@ -324,12 +344,18 @@ void ofApp::update(){
 
         
         /**** Log Outpus ****/
-        if(ofGetFrameNum() % 5 == 0){
-            ofLogNotice() << "Chaos: " << chaos << "  blobDiff: " << (int)blobSizeDiffSum << "  distCSum: " << (int)distCenterSum << "  velDiff: " << velDiff << "  velChaos: " << velChaos << "  vel_1: " << vel[0];
+        if(ofGetFrameNum() % 2 == 0 && numBlobs > 0){
+            ofLogNotice() << "Chaos: " << chaos <<
+            "  blobDiff: " << (int)blobSizeDiffSum <<
+            "  velAvgAbs: " << velAvgAbs <<
+//            "  bSpread: " << (int)blobSpreading <<
+//            " massC: " << distMassCenter <<
+//            "  distC: " << (int)distCenterSum <<
+            "  velDiff: " << velDiff <<
+            "  velAlg: " << velAlignment ;
         }
         if(0){ //log
             //ofLogNotice() << "numBlobs: " << numBlobs;
-            ofLogNotice() << "bx: " << bX << "speed: " << velAbs[0];
             ofLogNotice() << "distN: " << distNorm;
             ofLogNotice() << "blobSize 0: " << blobSizes[0];
             //            ofLogNotice() << "blobLen 0: " << blobLen[0];

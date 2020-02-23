@@ -92,7 +92,8 @@ public:
     ofVec2f center;
     
     float   chaos;
-    float   velChaos;
+    float   chaosOld;
+    float   velAlignment;
     float   velDiff;
     float   distCenterSum;
     float   blobSizeDiffSum;
