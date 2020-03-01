@@ -8,7 +8,6 @@
 #include <stdlib.h>
 
 #define HOST "localhost"
-#define PORT 8004
 
 
 class dancers{
@@ -56,6 +55,8 @@ public:
     ofImage img;
     
     
+    // -- OSC --
+    int port = 8003;
     
     // --- Kinect stuff ----
     ofxKinect kinect;

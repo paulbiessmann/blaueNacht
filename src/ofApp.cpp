@@ -1,13 +1,14 @@
 #include "ofApp.h"
-int maxBlobs = 4;
+int maxBlobs = 3;
+int sendRate = 3;
 //--------------------------------------------------------------
 void ofApp::setup(){
     
     ofSetBackgroundColor(0);
-    ofSetFrameRate(30);
+    ofSetFrameRate(25);
     
     // open an outgoing connection to HOST:PORT
-    sender.setup(HOST, PORT);
+    sender.setup(HOST, port);
     
     
     
@@ -278,7 +279,7 @@ void ofApp::update(){
         }
         
         // Smooth chaos value:
-        chaos = chaos + chaosOld * 0.93;
+        chaos = chaos * 0.1 + chaosOld * 0.9;
         
     /* --end Chaos. */
         
@@ -302,7 +303,7 @@ void ofApp::update(){
          */
         
         
-        if(ofGetFrameNum() % 2 == 0){
+        if(ofGetFrameNum() % sendRate == 0){
             
             
             
@@ -310,6 +311,7 @@ void ofApp::update(){
             m.setAddress("/mass");
             m.addFloatArg(velAvgAbs);
             m.addFloatArg(distAvg);
+            m.addFloatArg(chaos);
             if(massTrigger){
                 m.addTriggerArg();
             }
@@ -322,10 +324,10 @@ void ofApp::update(){
             if (numBlobs < maxBlobs) sendNr = numBlobs;
             for (int i = 0; i < sendNr; i++){ // < maxBlobs
                 
-                m.addFloatArg(ofMap( points[i].x, 0, kinect.width, 0.0, 1.0 ));
-                m.addFloatArg(ofMap( points[i].y, 0, kinect.height, 0.0, 1.0 ));
-                m.addFloatArg(velAbs[i]);
-                m.addFloatArg(blobSizes[i]);
+//                m.addFloatArg(ofMap( points[i].x, 0, kinect.width, 0.0, 1.0 ));
+//                m.addFloatArg(ofMap( points[i].y, 0, kinect.height, 0.0, 1.0 ));
+//                m.addFloatArg(velAbs[i]);
+//                m.addFloatArg(blobSizes[i]);
                 if(triggerN[i]){
                     m.addIntArg(1);
                 }
@@ -344,7 +346,7 @@ void ofApp::update(){
 
         
         /**** Log Outpus ****/
-        if(ofGetFrameNum() % 2 == 0 && numBlobs > 0){
+        if(ofGetFrameNum() % sendRate == 0 && numBlobs > 0){
             ofLogNotice() << "Chaos: " << chaos <<
             "  blobDiff: " << (int)blobSizeDiffSum <<
             "  velAvgAbs: " << velAvgAbs <<
